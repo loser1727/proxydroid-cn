@@ -1,0 +1,146 @@
+plugins {
+    id 'com.android.application'
+    id 'org.jetbrains.kotlin.android'
+    id 'org.mozilla.rust-android-gradle.rust-android'
+}
+
+def localProps = new Properties()
+def localPropsFile = rootProject.file('local.properties')
+if (localPropsFile.exists()) {
+    localPropsFile.withInputStream { localProps.load(it) }
+}
+
+android {
+    namespace 'org.proxydroid'
+    compileSdk 36
+    ndkVersion "29.0.14206865"
+
+    signingConfigs {
+        release {
+            def keystorePath = localProps.getProperty('KEYSTORE_PATH')
+            if (keystorePath) {
+                storeFile file(keystorePath)
+                storePassword localProps.getProperty('KEYSTORE_PASSWORD')
+                keyAlias localProps.getProperty('KEY_ALIAS')
+                keyPassword localProps.getProperty('KEY_PASSWORD')
+            }
+        }
+    }
+
+    defaultConfig {
+        applicationId "org.proxydroid"
+        minSdk 24
+        targetSdk 36
+        versionCode 74
+        versionName "3.4.0"
+
+        testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
+
+        ndk {
+            abiFilters 'x86', 'x86_64', 'armeabi-v7a', 'arm64-v8a'
+        }
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled false
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+            if (localProps.getProperty('KEYSTORE_PATH')) {
+                signingConfig signingConfigs.release
+            }
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_11
+        targetCompatibility JavaVersion.VERSION_11
+    }
+
+    kotlinOptions {
+        jvmTarget = '11'
+    }
+
+    externalNativeBuild {
+        cmake {
+            version '3.22.1'
+            path "src/main/cpp/CMakeLists.txt"
+        }
+    }
+
+    lint {
+        abortOnError false
+    }
+
+    buildFeatures {
+        compose true
+    }
+
+    composeOptions {
+        // Must match the Kotlin version (see gradle/libs.versions.toml).
+        kotlinCompilerExtensionVersion libs.versions.composeCompiler.get()
+    }
+
+    packagingOptions {
+        resources {
+            excludes += '/META-INF/{AL2.0,LGPL2.1}'
+        }
+    }
+}
+
+cargo {
+    module = "src/main/rust/proxydroid-tun2socks"
+    libname = "proxydroid_tun2socks"
+    targets = ["arm", "arm64", "x86", "x86_64"]
+    profile = "release"
+    prebuiltToolchains = true
+}
+
+tasks.whenTaskAdded { task ->
+    if (task.name == 'mergeDebugJniLibFolders' || task.name == 'mergeReleaseJniLibFolders' ||
+        task.name == 'javaPreCompileDebug' || task.name == 'javaPreCompileRelease') {
+        task.dependsOn 'cargoBuild'
+    }
+}
+
+dependencies {
+    // Local JARs (none expected today, kept for parity with legacy layout)
+    implementation fileTree(dir: 'libs', include: ['*.jar'])
+
+    // AndroidX core / app shell
+    implementation libs.androidx.appcompat
+    implementation libs.androidx.core.ktx
+    implementation libs.material
+
+    // Kotlin
+    implementation libs.kotlin.stdlib
+
+    // Jetpack Compose (BOM pins all artifact versions)
+    def composeBom = platform(libs.compose.bom)
+    implementation composeBom
+    androidTestImplementation composeBom
+    implementation libs.compose.material3
+    implementation libs.compose.material.icons.extended
+    implementation libs.compose.ui.tooling.preview
+    debugImplementation libs.compose.ui.tooling
+    implementation libs.androidx.activity.compose
+    implementation libs.androidx.lifecycle.viewmodel.compose
+    implementation libs.androidx.lifecycle.runtime.compose
+    implementation libs.androidx.lifecycle.runtime.ktx
+
+    // Third-party
+    // json-simple drops JUnit as a compile dep; exclude to avoid runtime classpath pollution.
+    implementation(libs.json.simple) {
+        exclude group: 'junit', module: 'junit'
+    }
+    implementation libs.rhino
+
+    // Unit test
+    testImplementation libs.junit
+    testImplementation libs.mockito.core
+
+    // Android instrumented test
+    androidTestImplementation libs.androidx.test.junit
+    androidTestImplementation libs.androidx.test.runner
+    androidTestImplementation libs.androidx.test.rules
+    androidTestImplementation libs.androidx.test.espresso.core
+}
