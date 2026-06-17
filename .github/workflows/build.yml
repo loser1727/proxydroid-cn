@@ -7,6 +7,8 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@v4
 
@@ -33,10 +35,18 @@ jobs:
           echo "ndk.dir=$ANDROID_HOME/ndk/$(ls $ANDROID_HOME/ndk | head -1)" >> local.properties
 
       - name: Build
-        run: ./gradlew assembleDebug --no-daemon
+        run: chmod +x gradlew && ./gradlew assembleDebug --no-daemon
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: proxydroid-cn-debug
           path: app/build/outputs/apk/debug/*.apk
+
+      - name: Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ github.run_number }}
+          name: Build #${{ github.run_number }}
+          body: 自动构建的中文汉化版 ProxyDroid APK
+          files: app/build/outputs/apk/debug/*.apk
