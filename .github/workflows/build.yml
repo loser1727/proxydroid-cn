@@ -1,52 +1,33 @@
 name: Build APK
-
-on:
-  push:
-  workflow_dispatch:
-
+on: [push, workflow_dispatch]
 jobs:
   build:
     runs-on: ubuntu-latest
-    permissions:
-      contents: write
     steps:
       - uses: actions/checkout@v4
 
-      - name: Setup Java
-        uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: '17'
+      - uses: actions/setup-java@v4
+        with: { distribution: temurin, java-version: '17' }
 
       - name: Setup NDK
-        uses: nttld/setup-ndk@v1
-        with:
-          ndk-version: r29
-          add-to-path: false
+        run: |
+          ANDROID_HOME=$ANDROID_SDK_ROOT
+          yes | ${ANDROID_SDK_ROOT}/cmdline-tools/latest/bin/sdkmanager --install "ndk;29.0.14206865" "cmake;3.22.1"
+          echo "ANDROID_NDK_HOME=$ANDROID_SDK_ROOT/ndk/29.0.14206865" >> $GITHUB_ENV
 
-      - name: Setup Rust
-        uses: actions-rust-lang/setup-rust-toolchain@v1
-        with:
-          target: armv7-linux-androideabi,aarch64-linux-android,i686-linux-android,x86_64-linux-android
+      - uses: actions-rust-lang/setup-rust-toolchain@v1
+
+      - name: Setup Rust targets
+        run: rustup target add armv7-linux-androideabi aarch64-linux-android i686-linux-android x86_64-linux-android
 
       - name: Configure
         run: |
-          echo "sdk.dir=$ANDROID_HOME" > local.properties
-          echo "ndk.dir=$ANDROID_HOME/ndk/$(ls $ANDROID_HOME/ndk | head -1)" >> local.properties
+          echo "sdk.dir=$ANDROID_SDK_ROOT" > local.properties
+          echo "ndk.dir=$ANDROID_SDK_ROOT/ndk/29.0.14206865" >> local.properties
+          chmod +x gradlew
 
       - name: Build
-        run: chmod +x gradlew && ./gradlew assembleDebug --no-daemon
+        run: ./gradlew assembleDebug --no-daemon
 
-      - name: Upload APK
-        uses: actions/upload-artifact@v4
-        with:
-          name: proxydroid-cn-debug
-          path: app/build/outputs/apk/debug/*.apk
-
-      - name: Release
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: v${{ github.run_number }}
-          name: Build #${{ github.run_number }}
-          body: 自动构建的中文汉化版 ProxyDroid APK
-          files: app/build/outputs/apk/debug/*.apk
+      - uses: actions/upload-artifact@v4
+        with: { name: apk, path: app/build/outputs/apk/debug/*.apk }
